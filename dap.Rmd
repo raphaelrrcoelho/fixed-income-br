@@ -1,0 +1,112 @@
+---
+title: "DAP - Cupom de DI x IPCA"
+output: html_notebook
+---
+
+* Cálculo do valor dos contratos futuros de Cupom de DI x IPCA (DAP)
+
+```{r}
+library(rbcb)
+library(bizdays)
+library(tidyverse)
+```
+
+
+# Calculando o índice de inflação
+
+O índice de inflação $I_t$ é calculado a partir da série de IPCA divulgada pelo IBGE.
+
+
+```{r}
+IPCA <- get_series(c(IPCA = 433), start_date = "2000-01-01")
+
+IPCA %>%
+  ggplot(aes(x = date, y = IPCA)) +
+  geom_line()
+
+```
+
+```{r}
+IPCA <- IPCA %>%
+  mutate(f_IPCA = 1 + lag(IPCA/100))
+
+IPCA$f_IPCA[1] <- 1000
+
+IPCA <- IPCA %>%
+  mutate(I_IPCA = cumprod(f_IPCA)) %>%
+  select(date, IPCA, I_IPCA)
+
+```
+
+
+```{r}
+IPCA %>%
+  ggplot(aes(x = date, y = I_IPCA)) +
+  geom_line()
+```
+
+## Lógica do uso índice
+
+* Para obter a inflação do período jan/2020-dez/2020 fazemos a divisão do índice de jan/2021 pelo índice de jan/2020 e subtraímos de 1.
+
+
+```{r}
+IPCA[IPCA$date == "2021-01-01",]$I_IPCA / IPCA[IPCA$date == "2020-01-01",]$I_IPCA - 1
+```
+```{r}
+IPCA %>%
+  filter(date >= "2020-01-01", date <= "2020-12-01") %>%
+  mutate(f_IPCA = 1 + IPCA / 100) %>%
+  pull(f_IPCA) %>%
+  prod() %>%
+  `+`(-1)
+```
+
+# Calculando o VNA
+
+## Sem a projeção
+
+Vamos considerar um título com emissão em jan/2015 queremos obter o VNA em 2020-12-15, para um valor nominal de $1000,00.
+
+* No período entre 2020-12-15 e 2020-11-15 temos a inflação de nov/2020.
+
+* Como a data de referência é 2020-12-15, já temos o índice com referência para dez/2020.
+
+$$
+VNA_t = N \cdot \frac{I_{dez/2020}}{I_{jan/2015}}
+$$
+```{r}
+1000 * IPCA[IPCA$date == "2019-06-08",]$I_IPCA / IPCA[IPCA$date == "2015-01-01",]$I_IPCA
+```
+
+## Com projeção
+
+Vamos considerar um título com emissão em jan/2015 queremos obter o VNA em 2021-01-04, para um valor nominal de $1000,00.
+
+* O dia 15 anterior é 2020-12-15.
+
+* No período entre 2020-12-15 e 2020-11-15 temos a inflação de nov/2020.
+
+* Como a data de referência é 2021-01-04, ainda não temos o índice com referência para jan/2021.
+
+* Vamos utilizar o índice até dez/2020 e utilizar a projeção da inflação de dez/2020 para o período de 2020-12-15 a 2021-01-04.
+
+$$
+VNA_t = N \cdot \frac{I_{dez/2020}}{I_{jan/2015}} (1 + p_t)^{du_t/du_n}
+$$
+
+A projeção pode ser encontrada no site da ANBIMA.
+
+<https://www.anbima.com.br/pt_br/informar/estatisticas/precos-e-indices/projecao-de-inflacao-gp-m.htm>
+
+![](images/vna-projecao-dez-2020.png)
+
+```{r}
+du_n <- bizdays("2020-12-15", "2021-01-15", "Brazil/ANBIMA")
+du_t <- bizdays("2020-12-15", "2021-01-04", "Brazil/ANBIMA")
+p <- 1.21 / 100
+1000 * IPCA[IPCA$date == "2020-12-01",]$I_IPCA / IPCA[IPCA$date == "2015-01-01",]$I_IPCA * (1 + p) ^ (du_t/du_n)
+```
+
+
+

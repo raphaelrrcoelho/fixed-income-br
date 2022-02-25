@@ -1,0 +1,76 @@
+---
+title: "LTN"
+output: html_notebook
+---
+
+- fazer o apreçamento de LTN usando `GetTDData`
+
+```{r}
+library(tidyverse)
+library(bizdays)
+library(GetTDData)
+source("Utils/rendafixa-compounding.R")
+source("Utils/rendafixa-daycount.R")
+source("Utils/rendafixa-spotrate.R")
+source("Pricing/fixedrate-bonds.R")
+
+ltn <- ltn()
+```
+
+```{r}
+get_td_files(ltn)
+```
+
+## Selecionando vencimentos
+
+<https://www.tesourodireto.com.br/titulos/precos-e-taxas.htm>
+
+```{r}
+maturities <- c("010724", "010126", "010125", "010122", "010123")
+
+df <- read_td_files(ltn, maturities)
+```
+
+```{r}
+df %>%
+  ggplot(aes(x = ref.date, y = price.bid, group = asset.code, color = asset.code)) +
+  geom_line(size = 1)
+```
+
+```{r}
+df %>%
+  ggplot(aes(x = ref.date, y = yield.bid, group = asset.code, color = asset.code)) +
+  geom_line(size = 1)
+```
+
+## Calculando o preço teórico
+
+$$
+VP_t = \frac{1000}{(1 + y_t)^T}
+$$
+
+```{r}
+df <- price_from_rate(ltn, df)
+```
+
+## Estrutura a Termo de Juros da LTN
+
+* Estrutura de taxas de juros x vencimentos para uma determinada data.
+
+```{r}
+filter_by_refdates(ltn, df, c("2021-03-02")) %>%
+  ggplot(aes(x = DU, y = yield.bid)) +
+  geom_line() +
+  geom_point()
+```
+
+```{r}
+refdates <- c("2021-03-01", "2021-04-01", "2021-05-01", "2021-06-01")
+  
+filter_by_refdates(ltn, df, refdates) %>%
+  ggplot(aes(x = matur.date, y = yield.bid, group = factor(ref.date), colour = factor(ref.date))) +
+  geom_line() +
+  geom_point()
+```
+
+
